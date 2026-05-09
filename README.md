@@ -126,6 +126,12 @@ The final Logic App + DCR design is the only path that satisfies "no source-tabl
 
 ---
 
+## Acknowledgments
+
+This repository was built collaboratively with **GitHub Copilot** ([@Copilot](https://github.com/Copilot)) — diagrams, Bicep, Logic App workflow JSON, workbook KQL, and README content were authored interactively in VS Code with Copilot as a pair-programming partner. AI co-authorship is recorded via `Co-authored-by:` trailers on the relevant commits.
+
+---
+
 ## License
 
 MIT
