@@ -7,6 +7,12 @@
 .DS_Store
 Thumbs.db
 
+# Local scratch / personal notes (never commit)
+misc.txt
+notes.txt
+scratch.txt
+TODO.txt
+
 # Local secrets / scratch
 *.local.json
 *.local.ps1
