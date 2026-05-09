@@ -1,0 +1,334 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "uamiResourceId": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "dcrLogsIngestionEndpoint": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "dcrImmutableId": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "streamName": {
+      "type": "String",
+      "defaultValue": "Custom-TvmRegional_CL"
+    },
+    "huntingQuery": {
+      "type": "String",
+      "defaultValue": "DeviceTvmSoftwareVulnerabilities | where isnotempty(DeviceId) | project DeviceId, DeviceName, SoftwareVendor=tostring(SoftwareVendor), SoftwareName=tostring(SoftwareName), SoftwareVersion=tostring(SoftwareVersion), CveId, VulnerabilitySeverityLevel=tostring(VulnerabilitySeverityLevel), RecommendedSecurityUpdate=tostring(RecommendedSecurityUpdate), RecommendedSecurityUpdateId=tostring(RecommendedSecurityUpdateId), OSPlatform, OSVersion, CveTags"
+    },
+    "chunkSize": {
+      "type": "Int",
+      "defaultValue": 1000
+    },
+    "kevStreamName": {
+      "type": "String",
+      "defaultValue": "Custom-CisaKev_CL"
+    },
+    "kevFeedUrl": {
+      "type": "String",
+      "defaultValue": "https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json"
+    },
+    "kevChunkSize": {
+      "type": "Int",
+      "defaultValue": 500
+    }
+  },
+  "triggers": {
+    "DailyAt04UTC": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "schedule": {
+          "hours": [ 4 ],
+          "minutes": [ 0 ]
+        },
+        "timeZone": "UTC"
+      }
+    }
+  },
+  "actions": {
+    "InitializeNow": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "Now",
+            "type": "string",
+            "value": "@{utcNow()}"
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "RunHuntingQuery": {
+      "type": "Http",
+      "inputs": {
+        "method": "POST",
+        "uri": "https://graph.microsoft.com/v1.0/security/runHuntingQuery",
+        "headers": {
+          "Content-Type": "application/json"
+        },
+        "body": {
+          "Query": "@parameters('huntingQuery')"
+        },
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "identity": "@parameters('uamiResourceId')",
+          "audience": "https://graph.microsoft.com"
+        }
+      },
+      "runAfter": {
+        "InitializeNow": [ "Succeeded" ]
+      }
+    },
+    "ShapeRows": {
+      "type": "Select",
+      "inputs": {
+        "from": "@coalesce(body('RunHuntingQuery')?['results'], json('[]'))",
+        "select": {
+          "TimeGenerated": "@variables('Now')",
+          "DeviceId": "@item()?['DeviceId']",
+          "DeviceName": "@item()?['DeviceName']",
+          "SoftwareVendor": "@item()?['SoftwareVendor']",
+          "SoftwareName": "@item()?['SoftwareName']",
+          "SoftwareVersion": "@item()?['SoftwareVersion']",
+          "CveId": "@item()?['CveId']",
+          "VulnerabilitySeverityLevel": "@item()?['VulnerabilitySeverityLevel']",
+          "RecommendedSecurityUpdate": "@item()?['RecommendedSecurityUpdate']",
+          "RecommendedSecurityUpdateId": "@item()?['RecommendedSecurityUpdateId']",
+          "OSPlatform": "@item()?['OSPlatform']",
+          "OSVersion": "@item()?['OSVersion']",
+          "CveTags": "@item()?['CveTags']"
+        }
+      },
+      "runAfter": {
+        "RunHuntingQuery": [ "Succeeded" ]
+      }
+    },
+    "InitializeRowCount": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "RowCount",
+            "type": "integer",
+            "value": "@length(body('ShapeRows'))"
+          }
+        ]
+      },
+      "runAfter": {
+        "ShapeRows": [ "Succeeded" ]
+      }
+    },
+    "InitializeChunkIndex": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "ChunkIndex",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "InitializeRowCount": [ "Succeeded" ]
+      }
+    },
+    "IfHasRows": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [ "@variables('RowCount')", 0 ]
+          }
+        ]
+      },
+      "actions": {
+        "UntilAllChunksSent": {
+          "type": "Until",
+          "expression": "@greaterOrEquals(mul(variables('ChunkIndex'), parameters('chunkSize')), variables('RowCount'))",
+          "limit": {
+            "count": 500,
+            "timeout": "PT1H"
+          },
+          "actions": {
+            "ComposeChunk": {
+              "type": "Compose",
+              "inputs": "@take(skip(body('ShapeRows'), mul(variables('ChunkIndex'), parameters('chunkSize'))), parameters('chunkSize'))",
+              "runAfter": {}
+            },
+            "PostChunk": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{concat(parameters('dcrLogsIngestionEndpoint'), '/dataCollectionRules/', parameters('dcrImmutableId'), '/streams/', parameters('streamName'), '?api-version=2023-01-01')}",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "@outputs('ComposeChunk')",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "identity": "@parameters('uamiResourceId')",
+                  "audience": "https://monitor.azure.com"
+                }
+              },
+              "runAfter": {
+                "ComposeChunk": [ "Succeeded" ]
+              }
+            },
+            "IncrementChunkIndex": {
+              "type": "IncrementVariable",
+              "inputs": {
+                "name": "ChunkIndex",
+                "value": 1
+              },
+              "runAfter": {
+                "PostChunk": [ "Succeeded" ]
+              }
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "InitializeChunkIndex": [ "Succeeded" ]
+      }
+    },
+    "GetKev": {
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@parameters('kevFeedUrl')",
+        "headers": {
+          "Accept": "application/json",
+          "User-Agent": "AzureLogicApps-tvm-graph-ingest/1.0"
+        }
+      },
+      "runAfter": {
+        "InitializeNow": [ "Succeeded" ]
+      }
+    },
+    "ShapeKevRows": {
+      "type": "Select",
+      "inputs": {
+        "from": "@coalesce(body('GetKev')?['vulnerabilities'], json('[]'))",
+        "select": {
+          "TimeGenerated": "@variables('Now')",
+          "CatalogVersion": "@body('GetKev')?['catalogVersion']",
+          "CatalogDateReleased": "@body('GetKev')?['dateReleased']",
+          "CveId": "@item()?['cveID']",
+          "VendorProject": "@item()?['vendorProject']",
+          "Product": "@item()?['product']",
+          "VulnerabilityName": "@item()?['vulnerabilityName']",
+          "DateAdded": "@item()?['dateAdded']",
+          "ShortDescription": "@item()?['shortDescription']",
+          "RequiredAction": "@item()?['requiredAction']",
+          "DueDate": "@item()?['dueDate']",
+          "KnownRansomwareCampaignUse": "@item()?['knownRansomwareCampaignUse']",
+          "Notes": "@item()?['notes']",
+          "Cwes": "@item()?['cwes']"
+        }
+      },
+      "runAfter": {
+        "GetKev": [ "Succeeded" ]
+      }
+    },
+    "InitializeKevRowCount": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "KevRowCount",
+            "type": "integer",
+            "value": "@length(body('ShapeKevRows'))"
+          }
+        ]
+      },
+      "runAfter": {
+        "ShapeKevRows": [ "Succeeded" ]
+      }
+    },
+    "InitializeKevChunkIndex": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "KevChunkIndex",
+            "type": "integer",
+            "value": 0
+          }
+        ]
+      },
+      "runAfter": {
+        "InitializeKevRowCount": [ "Succeeded" ]
+      }
+    },
+    "IfHasKevRows": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [ "@variables('KevRowCount')", 0 ]
+          }
+        ]
+      },
+      "actions": {
+        "UntilAllKevChunksSent": {
+          "type": "Until",
+          "expression": "@greaterOrEquals(mul(variables('KevChunkIndex'), parameters('kevChunkSize')), variables('KevRowCount'))",
+          "limit": {
+            "count": 500,
+            "timeout": "PT1H"
+          },
+          "actions": {
+            "ComposeKevChunk": {
+              "type": "Compose",
+              "inputs": "@take(skip(body('ShapeKevRows'), mul(variables('KevChunkIndex'), parameters('kevChunkSize'))), parameters('kevChunkSize'))",
+              "runAfter": {}
+            },
+            "PostKevChunk": {
+              "type": "Http",
+              "inputs": {
+                "method": "POST",
+                "uri": "@{concat(parameters('dcrLogsIngestionEndpoint'), '/dataCollectionRules/', parameters('dcrImmutableId'), '/streams/', parameters('kevStreamName'), '?api-version=2023-01-01')}",
+                "headers": {
+                  "Content-Type": "application/json"
+                },
+                "body": "@outputs('ComposeKevChunk')",
+                "authentication": {
+                  "type": "ManagedServiceIdentity",
+                  "identity": "@parameters('uamiResourceId')",
+                  "audience": "https://monitor.azure.com"
+                }
+              },
+              "runAfter": {
+                "ComposeKevChunk": [ "Succeeded" ]
+              }
+            },
+            "IncrementKevChunkIndex": {
+              "type": "IncrementVariable",
+              "inputs": {
+                "name": "KevChunkIndex",
+                "value": 1
+              },
+              "runAfter": {
+                "PostKevChunk": [ "Succeeded" ]
+              }
+            }
+          }
+        }
+      },
+      "runAfter": {
+        "InitializeKevChunkIndex": [ "Succeeded" ]
+      }
+    }
+  },
+  "outputs": {}
+}

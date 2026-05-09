@@ -1,0 +1,35 @@
+# OS / editor
+.vscode/
+.idea/
+*.suo
+*.user
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local secrets / scratch
+*.local.json
+*.local.ps1
+*.secrets
+*.pfx
+*.pem
+*.key
+
+# Build output
+bin/
+obj/
+out/
+dist/
+node_modules/
+
+# Bicep build artifacts
+*.json.bicep
+*.bicep.json
+main.json
+
+# Azure CLI artifacts
+.azure/
+
+# Logs
+*.log
+*.trace
