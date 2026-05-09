@@ -1,0 +1,133 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1100" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7b8aa0"/>
+    </marker>
+  </defs>
+
+  <!-- Canvas -->
+  <rect width="1000" height="1100" fill="#0a1426"/>
+
+  <!-- Title -->
+  <text x="500" y="40" text-anchor="middle" fill="#ffffff" font-size="22" font-weight="700">TVM + CISA KEV — Architecture</text>
+  <text x="500" y="62" text-anchor="middle" fill="#7b8aa0" font-size="12" font-style="italic">Daily ingestion: Microsoft Graph + CISA KEV → Direct-Ingestion DCR → custom tables → Sentinel workbook</text>
+
+  <!-- ===== External sources (top, outside RG) ===== -->
+
+  <!-- Microsoft Graph -->
+  <g>
+    <rect x="120" y="100" width="290" height="80" rx="8" fill="#1a2d4a" stroke="#4a90e2" stroke-width="2"/>
+    <text x="265" y="128" text-anchor="middle" fill="#9ec5fe" font-size="15" font-weight="700">Microsoft Graph</text>
+    <text x="265" y="148" text-anchor="middle" fill="#7b9bc7" font-size="11" font-style="italic">POST /security/runHuntingQuery</text>
+    <text x="265" y="166" text-anchor="middle" fill="#7b9bc7" font-size="11">ThreatHunting.Read.All</text>
+  </g>
+
+  <!-- CISA KEV Catalog -->
+  <g>
+    <rect x="590" y="100" width="290" height="80" rx="8" fill="#1a2d4a" stroke="#4a90e2" stroke-width="2"/>
+    <text x="735" y="128" text-anchor="middle" fill="#9ec5fe" font-size="15" font-weight="700">CISA KEV Catalog</text>
+    <text x="735" y="148" text-anchor="middle" fill="#7b9bc7" font-size="11" font-style="italic">known_exploited_vulnerabilities.json</text>
+    <text x="735" y="166" text-anchor="middle" fill="#7b9bc7" font-size="11">Public HTTPS feed</text>
+  </g>
+
+  <!-- ===== Resource Group dashed boundary ===== -->
+  <rect x="40" y="240" width="920" height="780" rx="12" fill="none" stroke="#5a6478" stroke-width="1.5" stroke-dasharray="8 4"/>
+  <text x="60" y="265" fill="#9ca3af" font-size="13" font-weight="600">Resource Group · Sentinel · eastus2</text>
+
+  <!-- Recurrence Trigger -->
+  <g>
+    <rect x="380" y="290" width="240" height="60" rx="8" fill="#2a1612" stroke="#d97706" stroke-width="2"/>
+    <text x="500" y="316" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700">Recurrence Trigger</text>
+    <text x="500" y="335" text-anchor="middle" fill="#d4a060" font-size="11" font-style="italic">DailyAt04UTC</text>
+  </g>
+
+  <!-- Logic App -->
+  <g>
+    <rect x="270" y="395" width="460" height="90" rx="8" fill="#2a1612" stroke="#d97706" stroke-width="2"/>
+    <text x="500" y="423" text-anchor="middle" fill="#fbbf24" font-size="16" font-weight="700">Logic App Consumption</text>
+    <text x="500" y="445" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="600">la-tvm-graph-ingest</text>
+    <text x="500" y="465" text-anchor="middle" fill="#d4a060" font-size="11" font-style="italic">UAMI: mi-tvm-graph-ingest</text>
+    <text x="500" y="479" text-anchor="middle" fill="#d4a060" font-size="11" font-style="italic">parallel TVM + KEV branches</text>
+  </g>
+
+  <!-- DCR -->
+  <g>
+    <rect x="320" y="540" width="360" height="80" rx="8" fill="#142a20" stroke="#10b981" stroke-width="2"/>
+    <text x="500" y="568" text-anchor="middle" fill="#6ee7b7" font-size="15" font-weight="700">Direct-Ingestion DCR</text>
+    <text x="500" y="588" text-anchor="middle" fill="#a7f3d0" font-size="13" font-weight="600">dcr-tvm-graph-ingest</text>
+    <text x="500" y="608" text-anchor="middle" fill="#5fb593" font-size="11" font-style="italic">2 streams · 2 dataFlows</text>
+  </g>
+
+  <!-- LAW sub-boundary -->
+  <rect x="80" y="670" width="840" height="200" rx="10" fill="none" stroke="#5a6478" stroke-width="1.5" stroke-dasharray="6 3"/>
+  <text x="100" y="695" fill="#9ca3af" font-size="12" font-weight="600">Log Analytics · DIBSecCom</text>
+
+  <!-- TvmRegional_CL -->
+  <g>
+    <rect x="140" y="715" width="300" height="130" rx="8" fill="#1f1535" stroke="#7c3aed" stroke-width="2"/>
+    <text x="290" y="745" text-anchor="middle" fill="#c4b5fd" font-size="16" font-weight="700">TvmRegional_CL</text>
+    <text x="290" y="773" text-anchor="middle" fill="#a78bfa" font-size="11" font-style="italic">~3,200 rows/day</text>
+    <text x="290" y="791" text-anchor="middle" fill="#a78bfa" font-size="11" font-style="italic">18 devices</text>
+    <text x="290" y="817" text-anchor="middle" fill="#8b6fbb" font-size="10">Defender TVM findings</text>
+  </g>
+
+  <!-- CisaKev_CL -->
+  <g>
+    <rect x="560" y="715" width="300" height="130" rx="8" fill="#1f1535" stroke="#7c3aed" stroke-width="2"/>
+    <text x="710" y="745" text-anchor="middle" fill="#c4b5fd" font-size="16" font-weight="700">CisaKev_CL</text>
+    <text x="710" y="773" text-anchor="middle" fill="#a78bfa" font-size="11" font-style="italic">~1,500 KEV CVEs</text>
+    <text x="710" y="791" text-anchor="middle" fill="#a78bfa" font-size="11" font-style="italic">260 vendors</text>
+    <text x="710" y="817" text-anchor="middle" fill="#8b6fbb" font-size="10">CISA KEV catalog</text>
+  </g>
+
+  <!-- Workbook -->
+  <g>
+    <rect x="320" y="920" width="360" height="80" rx="8" fill="#2a1414" stroke="#dc2626" stroke-width="2"/>
+    <text x="500" y="948" text-anchor="middle" fill="#fca5a5" font-size="15" font-weight="700">Sentinel Workbook</text>
+    <text x="500" y="968" text-anchor="middle" fill="#fecaca" font-size="13" font-weight="600">TVM-By-Region</text>
+    <text x="500" y="987" text-anchor="middle" fill="#c97070" font-size="11" font-style="italic">5 KQL panels + KEV matches</text>
+  </g>
+
+  <!-- Analyst (outside RG, bottom, blue pill) -->
+  <g>
+    <ellipse cx="500" cy="1060" rx="135" ry="24" fill="#1a2d4a" stroke="#4a90e2" stroke-width="2"/>
+    <text x="500" y="1057" text-anchor="middle" fill="#9ec5fe" font-size="13" font-weight="700">Analyst</text>
+    <text x="500" y="1074" text-anchor="middle" fill="#7b9bc7" font-size="10" font-style="italic">via Sentinel / Azure Portal</text>
+  </g>
+
+  <!-- ===== Arrows ===== -->
+
+  <!-- Graph -> Logic App (enters left side) -->
+  <path d="M 265 180 L 265 440 L 270 440" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="158" y="305" fill="#8b9bb0" font-size="10" font-style="italic">runHuntingQuery</text>
+  <text x="190" y="319" fill="#8b9bb0" font-size="10" font-style="italic">results</text>
+
+  <!-- KEV -> Logic App (enters right side) -->
+  <path d="M 735 180 L 735 440 L 730 440" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="745" y="305" fill="#8b9bb0" font-size="10" font-style="italic">JSON feed</text>
+
+  <!-- Trigger -> Logic App -->
+  <path d="M 500 350 L 500 395" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Logic App -> DCR -->
+  <path d="M 500 485 L 500 540" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="510" y="510" fill="#8b9bb0" font-size="10" font-style="italic">POST chunks · monitor.azure.com</text>
+
+  <!-- DCR -> TvmRegional_CL -->
+  <path d="M 410 620 L 410 658 L 290 658 L 290 715" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="142" y="650" fill="#8b9bb0" font-size="10" font-style="italic">Custom-TvmRegional_CL</text>
+
+  <!-- DCR -> CisaKev_CL -->
+  <path d="M 590 620 L 590 658 L 710 658 L 710 715" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <text x="615" y="650" fill="#8b9bb0" font-size="10" font-style="italic">Custom-CisaKev_CL</text>
+
+  <!-- TvmRegional_CL -> Workbook -->
+  <path d="M 290 845 L 290 890 L 430 890 L 430 920" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- CisaKev_CL -> Workbook -->
+  <path d="M 710 845 L 710 890 L 570 890 L 570 920" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Workbook -> Analyst -->
+  <path d="M 500 1000 L 500 1036" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+</svg>

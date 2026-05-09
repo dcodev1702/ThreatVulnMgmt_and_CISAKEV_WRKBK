@@ -1,0 +1,142 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 950" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#7b8aa0"/>
+    </marker>
+  </defs>
+
+  <!-- Canvas -->
+  <rect width="1100" height="950" fill="#0a1426"/>
+
+  <!-- Title -->
+  <text x="550" y="35" text-anchor="middle" fill="#ffffff" font-size="22" font-weight="700">Logic App Workflow — la-tvm-graph-ingest</text>
+  <text x="550" y="58" text-anchor="middle" fill="#7b8aa0" font-size="12" font-style="italic">Both branches start after InitializeNow and run in parallel · each posts to its own DCR stream</text>
+
+  <!-- Recurrence Trigger -->
+  <g>
+    <rect x="430" y="85" width="240" height="60" rx="8" fill="#1a2d4a" stroke="#4a90e2" stroke-width="2"/>
+    <text x="550" y="111" text-anchor="middle" fill="#9ec5fe" font-size="14" font-weight="700">Recurrence Trigger</text>
+    <text x="550" y="130" text-anchor="middle" fill="#7b9bc7" font-size="11" font-style="italic">DailyAt04UTC</text>
+  </g>
+
+  <!-- Trigger -> InitializeNow -->
+  <path d="M 550 145 L 550 175" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- InitializeNow (shared) -->
+  <g>
+    <rect x="430" y="175" width="240" height="60" rx="8" fill="#2a1612" stroke="#d97706" stroke-width="2"/>
+    <text x="550" y="201" text-anchor="middle" fill="#fbbf24" font-size="14" font-weight="700">InitializeNow</text>
+    <text x="550" y="220" text-anchor="middle" fill="#d4a060" font-size="11" font-style="italic">variables('Now') = utcNow()</text>
+  </g>
+
+  <!-- Fan-out arrows from InitializeNow to both branches -->
+  <path d="M 550 235 L 550 270 L 290 270 L 290 305" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 550 235 L 550 270 L 810 270 L 810 305" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- ===== TVM Branch ===== -->
+  <rect x="50" y="265" width="480" height="475" rx="10" fill="none" stroke="#5a6478" stroke-width="1.5" stroke-dasharray="8 4"/>
+  <text x="70" y="290" fill="#9ca3af" font-size="13" font-weight="600">TVM branch · ~3,200 rows · chunkSize 1000</text>
+
+  <!-- RunHuntingQuery -->
+  <g>
+    <rect x="110" y="305" width="360" height="50" rx="8" fill="#142a20" stroke="#10b981" stroke-width="2"/>
+    <text x="290" y="328" text-anchor="middle" fill="#6ee7b7" font-size="13" font-weight="700">RunHuntingQuery</text>
+    <text x="290" y="346" text-anchor="middle" fill="#5fb593" font-size="10" font-style="italic">POST graph.microsoft.com</text>
+  </g>
+  <path d="M 290 355 L 290 380" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- ShapeRows -->
+  <g>
+    <rect x="110" y="380" width="360" height="50" rx="8" fill="#2a1612" stroke="#d97706" stroke-width="2"/>
+    <text x="290" y="403" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">ShapeRows</text>
+    <text x="290" y="421" text-anchor="middle" fill="#d4a060" font-size="10" font-style="italic">Select 13 columns</text>
+  </g>
+  <path d="M 290 430 L 290 455" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Initialize counters -->
+  <g>
+    <rect x="110" y="455" width="360" height="50" rx="8" fill="#2a1612" stroke="#d97706" stroke-width="2"/>
+    <text x="290" y="478" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">Initialize counters</text>
+    <text x="290" y="496" text-anchor="middle" fill="#d4a060" font-size="10" font-style="italic">RowCount · ChunkIndex</text>
+  </g>
+  <path d="M 290 505 L 290 530" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- IfHasRows -->
+  <g>
+    <rect x="110" y="530" width="360" height="50" rx="8" fill="#2a1612" stroke="#d97706" stroke-width="2"/>
+    <text x="290" y="553" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">IfHasRows</text>
+    <text x="290" y="571" text-anchor="middle" fill="#d4a060" font-size="10" font-style="italic">RowCount &gt; 0</text>
+  </g>
+  <path d="M 290 580 L 290 605" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- UntilAllChunksSent -->
+  <g>
+    <rect x="110" y="605" width="360" height="100" rx="8" fill="#2a1414" stroke="#dc2626" stroke-width="2"/>
+    <text x="290" y="630" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="700">UntilAllChunksSent</text>
+    <text x="290" y="652" text-anchor="middle" fill="#fecaca" font-size="11" font-style="italic">ComposeChunk</text>
+    <text x="290" y="671" text-anchor="middle" fill="#fecaca" font-size="11" font-style="italic">→ PostChunk</text>
+    <text x="290" y="690" text-anchor="middle" fill="#fecaca" font-size="11" font-style="italic">→ IncrementChunkIndex</text>
+  </g>
+
+  <!-- ===== KEV Branch ===== -->
+  <rect x="570" y="265" width="480" height="475" rx="10" fill="none" stroke="#5a6478" stroke-width="1.5" stroke-dasharray="8 4"/>
+  <text x="590" y="290" fill="#9ca3af" font-size="13" font-weight="600">KEV branch · ~1,500 rows · chunkSize 500</text>
+
+  <!-- GetKev -->
+  <g>
+    <rect x="630" y="305" width="360" height="50" rx="8" fill="#142a20" stroke="#10b981" stroke-width="2"/>
+    <text x="810" y="328" text-anchor="middle" fill="#6ee7b7" font-size="13" font-weight="700">GetKev</text>
+    <text x="810" y="346" text-anchor="middle" fill="#5fb593" font-size="10" font-style="italic">GET cisa.gov</text>
+  </g>
+  <path d="M 810 355 L 810 380" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- ShapeKevRows -->
+  <g>
+    <rect x="630" y="380" width="360" height="50" rx="8" fill="#2a1612" stroke="#d97706" stroke-width="2"/>
+    <text x="810" y="403" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">ShapeKevRows</text>
+    <text x="810" y="421" text-anchor="middle" fill="#d4a060" font-size="10" font-style="italic">Select 14 columns</text>
+  </g>
+  <path d="M 810 430 L 810 455" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- Initialize KEV counters -->
+  <g>
+    <rect x="630" y="455" width="360" height="50" rx="8" fill="#2a1612" stroke="#d97706" stroke-width="2"/>
+    <text x="810" y="478" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">Initialize KEV counters</text>
+    <text x="810" y="496" text-anchor="middle" fill="#d4a060" font-size="10" font-style="italic">KevRowCount · KevChunkIndex</text>
+  </g>
+  <path d="M 810 505 L 810 530" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- IfHasKevRows -->
+  <g>
+    <rect x="630" y="530" width="360" height="50" rx="8" fill="#2a1612" stroke="#d97706" stroke-width="2"/>
+    <text x="810" y="553" text-anchor="middle" fill="#fbbf24" font-size="13" font-weight="700">IfHasKevRows</text>
+    <text x="810" y="571" text-anchor="middle" fill="#d4a060" font-size="10" font-style="italic">KevRowCount &gt; 0</text>
+  </g>
+  <path d="M 810 580 L 810 605" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <!-- UntilAllKevChunksSent -->
+  <g>
+    <rect x="630" y="605" width="360" height="100" rx="8" fill="#2a1414" stroke="#dc2626" stroke-width="2"/>
+    <text x="810" y="630" text-anchor="middle" fill="#fca5a5" font-size="13" font-weight="700">UntilAllKevChunksSent</text>
+    <text x="810" y="652" text-anchor="middle" fill="#fecaca" font-size="11" font-style="italic">ComposeKevChunk</text>
+    <text x="810" y="671" text-anchor="middle" fill="#fecaca" font-size="11" font-style="italic">→ PostKevChunk</text>
+    <text x="810" y="690" text-anchor="middle" fill="#fecaca" font-size="11" font-style="italic">→ IncrementKevChunkIndex</text>
+  </g>
+
+  <!-- Arrows from each branch's last action down to DCR -->
+  <path d="M 290 705 L 290 770 L 470 770 L 470 800" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+  <path d="M 810 705 L 810 770 L 630 770 L 630 800" stroke="#7b8aa0" stroke-width="1.5" fill="none" marker-end="url(#arrow)"/>
+
+  <text x="180" y="763" fill="#8b9bb0" font-size="10" font-style="italic">Custom-TvmRegional_CL</text>
+  <text x="690" y="763" fill="#8b9bb0" font-size="10" font-style="italic">Custom-CisaKev_CL</text>
+
+  <!-- DCR -->
+  <g>
+    <rect x="400" y="800" width="300" height="90" rx="8" fill="#142a20" stroke="#10b981" stroke-width="2"/>
+    <text x="550" y="828" text-anchor="middle" fill="#6ee7b7" font-size="14" font-weight="700">Direct-Ingestion DCR</text>
+    <text x="550" y="848" text-anchor="middle" fill="#a7f3d0" font-size="12" font-weight="600">dcr-tvm-graph-ingest</text>
+    <text x="550" y="868" text-anchor="middle" fill="#5fb593" font-size="10" font-style="italic">POST /streams/Custom-{table} → 204</text>
+    <text x="550" y="882" text-anchor="middle" fill="#5fb593" font-size="10" font-style="italic">audience: monitor.azure.com</text>
+  </g>
+
+</svg>
