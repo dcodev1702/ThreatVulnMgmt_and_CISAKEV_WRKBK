@@ -10,40 +10,7 @@ The data plane is a single **Logic App + Direct-Ingestion DCR** that pulls TVM v
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    classDef ms fill:#1e3a5f,stroke:#4a90e2,color:#9ec5fe,stroke-width:2px
-    classDef azure fill:#3d1f1a,stroke:#d97706,color:#fbbf24,stroke-width:2px
-    classDef compute fill:#1a3d2e,stroke:#10b981,color:#6ee7b7,stroke-width:2px
-    classDef store fill:#2d1f4a,stroke:#7c3aed,color:#c4b5fd,stroke-width:2px
-    classDef worker fill:#3d1a1a,stroke:#dc2626,color:#fca5a5,stroke-width:2px
-
-    Graph["Microsoft Graph<br/><i>POST /security/runHuntingQuery</i><br/>ThreatHunting.Read.All"]:::ms
-    KEV["CISA KEV Catalog<br/><i>known_exploited_vulnerabilities.json</i><br/>Public HTTPS feed"]:::ms
-
-    subgraph SentinelRG["Resource Group · Sentinel · eastus2"]
-        Trigger["Recurrence Trigger<br/><i>DailyAt04UTC</i>"]:::azure
-        LA["Logic App Consumption<br/><b>la-tvm-graph-ingest</b><br/>UAMI: mi-tvm-graph-ingest"]:::azure
-        DCR["Direct-Ingestion DCR<br/><b>dcr-tvm-graph-ingest</b><br/>2 streams · 2 dataFlows"]:::store
-        subgraph LAW["Log Analytics · DIBSecCom"]
-            TVM["TvmRegional_CL<br/><i>~3,200 rows/day · 18 devices</i>"]:::compute
-            KEVT["CisaKev_CL<br/><i>~1,500 KEV CVEs · 260 vendors</i>"]:::compute
-        end
-        WB["Sentinel Workbook<br/><b>TVM-By-Region</b><br/>5 KQL panels + KEV matches"]:::worker
-    end
-
-    Teams(["Analyst<br/>via Sentinel / Azure Portal"]):::ms
-
-    Trigger --> LA
-    LA -->|"audience: graph.microsoft.com"| Graph
-    LA -->|GET| KEV
-    LA -->|"POST chunks · audience: monitor.azure.com"| DCR
-    DCR -->|Custom-TvmRegional_CL| TVM
-    DCR -->|Custom-CisaKev_CL| KEVT
-    TVM --> WB
-    KEVT --> WB
-    WB --> Teams
-```
+![TVM + CISA KEV architecture](images/architecture.svg)
 
 ### Why this shape
 
@@ -58,41 +25,7 @@ flowchart TB
 
 ## Logic App — both branches share `InitializeNow`
 
-```mermaid
-flowchart TB
-    classDef trig fill:#1e3a5f,stroke:#4a90e2,color:#9ec5fe,stroke-width:2px
-    classDef init fill:#3d1f1a,stroke:#d97706,color:#fbbf24,stroke-width:2px
-    classDef tvm fill:#1a3d2e,stroke:#10b981,color:#6ee7b7,stroke-width:2px
-    classDef kev fill:#2d1f4a,stroke:#7c3aed,color:#c4b5fd,stroke-width:2px
-    classDef post fill:#3d1a1a,stroke:#dc2626,color:#fca5a5,stroke-width:2px
-
-    Trig["Recurrence · DailyAt04UTC"]:::trig
-    Now["InitializeNow<br/><i>variables('Now') = utcNow()</i>"]:::init
-
-    subgraph TVMBranch["TVM branch · ~3,200 rows · chunkSize 1000"]
-        RHQ["RunHuntingQuery<br/><i>POST graph.microsoft.com</i>"]:::tvm
-        ShapeT["ShapeRows<br/><i>Select 13 cols</i>"]:::tvm
-        InitT["InitializeRowCount<br/>InitializeChunkIndex"]:::tvm
-        IfT{"IfHasRows<br/><i>RowCount > 0</i>"}:::tvm
-        UntilT["UntilAllChunksSent<br/><i>ComposeChunk → PostChunk → Increment</i>"]:::tvm
-    end
-
-    subgraph KEVBranch["KEV branch · ~1,500 rows · chunkSize 500"]
-        Get["GetKev<br/><i>GET cisa.gov</i>"]:::kev
-        ShapeK["ShapeKevRows<br/><i>Select 14 cols</i>"]:::kev
-        InitK["InitializeKevRowCount<br/>InitializeKevChunkIndex"]:::kev
-        IfK{"IfHasKevRows<br/><i>KevRowCount > 0</i>"}:::kev
-        UntilK["UntilAllKevChunksSent<br/><i>ComposeKevChunk → PostKevChunk → Increment</i>"]:::kev
-    end
-
-    Post["DCR · dcr-tvm-graph-ingest<br/><i>POST /streams/Custom-{table} → 204 NoContent</i>"]:::post
-
-    Trig --> Now
-    Now --> RHQ
-    Now --> Get
-    RHQ --> ShapeT --> InitT --> IfT --> UntilT --> Post
-    Get --> ShapeK --> InitK --> IfK --> UntilK --> Post
-```
+![Logic App workflow with parallel TVM and KEV branches](images/logic-app-workflow.svg)
 
 The two branches run in parallel because both start with `runAfter: { InitializeNow: [Succeeded] }`. The DCR enforces stream-to-table mapping, so cross-contamination is impossible — each branch posts to its own `streamName` parameter.
 
@@ -102,28 +35,7 @@ The two branches run in parallel because both start with `runAfter: { Initialize
 
 The KEV section joins the **latest snapshot per `(DeviceId, CveId)`** in `TvmRegional_CL` to the **latest snapshot per `CveId`** in `CisaKev_CL`, then sorts ransomware-linked KEVs first and soonest CISA due dates first.
 
-```mermaid
-flowchart LR
-    classDef src fill:#1a3d2e,stroke:#10b981,color:#6ee7b7,stroke-width:2px
-    classDef src2 fill:#2d1f4a,stroke:#7c3aed,color:#c4b5fd,stroke-width:2px
-    classDef join fill:#3d1f1a,stroke:#d97706,color:#fbbf24,stroke-width:2px
-    classDef out fill:#3d1a1a,stroke:#dc2626,color:#fca5a5,stroke-width:2px
-
-    DI["DeviceInfo<br/><i>Region filter · MachineGroup</i>"]:::src
-    TVM["TvmRegional_CL<br/><i>arg_max by DeviceId, CveId</i>"]:::src
-    KEV["CisaKev_CL<br/><i>arg_max by CveId</i>"]:::src2
-
-    Join1{"join kind=inner<br/>on DeviceId"}:::join
-    Join2{"join kind=inner<br/>on CveId"}:::join
-
-    Out["KEV-matched grid<br/><i>Device · CVE · KEV Name · Vendor</i><br/><i>Ransomware · CISA Due · Severity</i>"]:::out
-
-    DI --> Join1
-    TVM --> Join1
-    Join1 --> Join2
-    KEV --> Join2
-    Join2 --> Out
-```
+![Workbook KEV match join logic](images/workbook-kev-match.svg)
 
 **Live validation:** 19 KEV matches across 6 hosts, 14 unique KEV CVEs, 6 already past CISA due date.
 
@@ -138,6 +50,7 @@ flowchart LR
 | [`grant-graph-permission.ps1`](grant-graph-permission.ps1) | Idempotent grant of Graph `ThreatHunting.Read.All` app role to the UAMI |
 | [`deploy-tvm-workbook.bicep`](deploy-tvm-workbook.bicep) | Publishes the workbook via `loadTextContent()` of the JSON |
 | [`MDE_TVM_Regional_Vulnerability_Workbook.workbook.json`](MDE_TVM_Regional_Vulnerability_Workbook.workbook.json) | Workbook source (Region/Device/Lookback parameters · TVM panels · CISA KEV section) |
+| [`images/`](images/) | Architecture and workflow diagrams (SVG) |
 
 ---
 
