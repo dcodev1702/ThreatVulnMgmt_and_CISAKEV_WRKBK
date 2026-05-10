@@ -2,7 +2,7 @@
 
 A Microsoft Sentinel workbook ([`MDE_TVM_Regional_Vulnerability_Workbook.workbook.json`](MDE_TVM_Regional_Vulnerability_Workbook.workbook.json)) that surfaces **Defender for Endpoint TVM** vulnerabilities by `MachineGroup` region, joined against the **CISA Known Exploited Vulnerabilities (KEV)** catalog so analysts can see exactly which hosts are exposed to actively-exploited CVEs.
 
-The data plane is a single **Logic App + Direct-Ingestion DCR** that pulls TVM via Microsoft Graph `runHuntingQuery` and the public CISA KEV JSON feed, then writes both into custom analytics tables in the Sentinel workspace.
+The data plane is a single **Logic App + Direct-Ingestion DCR** that pulls TVM via Microsoft Graph [`runHuntingQuery`](https://learn.microsoft.com/en-us/graph/api/security-security-runhuntingquery) and the public CISA KEV JSON feed, then writes both into custom analytics tables in the Sentinel workspace.
 
 > **Authentication stance:** UAMI + RBAC only. **No** storage shared keys, **no** SAS, **no** Function keys, **no** client secrets, **no** App Registration credentials.
 
@@ -113,7 +113,7 @@ LatestTvm
 - **DCR data-plane cache.** When you add a new stream/dataFlow to the DCR, the Logs Ingestion endpoint can take ~5 minutes to pick up the change. The first 1–2 runs may return `400 InvalidStream` even though the ARM control plane shows the stream — wait, then re-trigger.
 - **Custom table must pre-exist.** The DCR validates that destination tables exist at deployment time, so [`deploy-tvm-graph-ingest.bicep`](deploy-tvm-graph-ingest.bicep) declares `CisaKev_CL` (`Microsoft.OperationalInsights/workspaces/tables@2025-02-01`) **before** the DCR and uses `dependsOn` on the DCR.
 - **DCR location must match workspace region.** UAMIs cannot be moved across regions, so pin `param location = '<workspaceRegion>'` rather than relying on `resourceGroup().location`.
-- **Recurrence fires on creation.** The Logic App fires its `Recurrence` trigger immediately when first deployed, before role assignments propagate. The first run usually fails on `RunHuntingQuery` (Forbidden) — re-trigger after the role assignment lands.
+- **Recurrence fires on creation.** The Logic App fires its `Recurrence` trigger immediately when first deployed, before role assignments propagate. The first run usually fails on [`RunHuntingQuery`](https://learn.microsoft.com/en-us/graph/api/security-security-runhuntingquery) (Forbidden) — re-trigger after the role assignment lands.
 - **CISA KEV feed is anonymous HTTPS.** No auth required; the GET sends `Accept: application/json` and a friendly `User-Agent`.
 
 ---
@@ -126,7 +126,7 @@ LatestTvm
 | Sentinel **KQL Job** writing to `TvmRegional_KQL_CL` | TVM tables are not in the data lake System Tables tier in this tenant. |
 | Workbook **Sentinel Data Lake** data source | Workbook source has a per-tenant table allowlist that excludes `DeviceTvmSoftwareVulnerabilities` even though the table is queryable from Defender's Data Lake KQL page. |
 | Workbook **Custom Endpoint** to a Function App proxy (`func-tvm-xdr-hunt-proxy`) | Workbook Custom Endpoints can't acquire/forward an Entra Bearer token for a custom audience; EasyAuth blocked every workbook call. The whole proxy stack was decommissioned. |
-| Workbook **Microsoft Graph** data source | Graph data source supports GET/GETARRAY only; cannot POST to `runHuntingQuery`. |
+| Workbook **Microsoft Graph** data source | Graph data source supports GET/GETARRAY only; cannot POST to [`runHuntingQuery`](https://learn.microsoft.com/en-us/graph/api/security-security-runhuntingquery). |
 
 The final Logic App + DCR design is the only path that satisfies "no source-table dependency, no secrets, queryable from a workbook."
 
