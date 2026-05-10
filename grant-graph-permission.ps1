@@ -6,25 +6,62 @@
 #   - Application Administrator
 #   - Privileged Role Administrator
 #
+# Subscription discovery: this script resolves the subscription GUID at runtime
+# from a subscription *name* (default 'Security') using the Az PowerShell cmdlet
+# Get-AzSubscription. Falls back to `az account list` if the Az module is not
+# installed. Pass -SubscriptionId explicitly to skip discovery entirely.
+#
 # Usage:
 #   .\grant-graph-permission.ps1
 #       [-UamiName mi-tvm-graph-ingest]
 #       [-ResourceGroup Sentinel]
-#       [-Subscription 192ad012-896e-4f14-8525-c37a2a9640f9]
+#       [-SubscriptionName 'Security']
+#       [-SubscriptionId '<guid>']                          # optional override
 #       [-AppRoleId dd98c7f5-2d42-42d3-a0e4-633161547251]   # ThreatHunting.Read.All
 
 [CmdletBinding()]
 param(
-    [string]$UamiName       = 'mi-tvm-graph-ingest',
-    [string]$ResourceGroup  = 'Sentinel',
-    [string]$Subscription   = '192ad012-896e-4f14-8525-c37a2a9640f9',
-    [string]$AppRoleId      = 'dd98c7f5-2d42-42d3-a0e4-633161547251'
+    [string]$UamiName         = 'mi-tvm-graph-ingest',
+    [string]$ResourceGroup    = 'Sentinel',
+    [string]$SubscriptionName = 'Security',
+    [string]$SubscriptionId   = '',
+    [string]$AppRoleId        = 'dd98c7f5-2d42-42d3-a0e4-633161547251'
 )
 
 $ErrorActionPreference = 'Stop'
 
+# --- Resolve SubscriptionId from SubscriptionName -----------------------------
+# Prefer the Az PowerShell cmdlet. If the Az module isn't loaded/installed,
+# fall back to `az account list` so the script still works on minimal hosts.
+if ([string]::IsNullOrWhiteSpace($SubscriptionId)) {
+    Write-Host "Resolving subscription '$SubscriptionName' to a subscription id..."
+
+    $resolved = $null
+    if (Get-Command Get-AzSubscription -ErrorAction SilentlyContinue) {
+        try {
+            $sub = Get-AzSubscription -SubscriptionName $SubscriptionName -ErrorAction Stop
+            $resolved = $sub.Id
+        } catch {
+            Write-Warning "Get-AzSubscription failed ($($_.Exception.Message)). Falling back to az CLI."
+        }
+    } else {
+        Write-Warning "Az PowerShell module not found. Falling back to 'az account list'. Install with: Install-Module Az -Scope CurrentUser"
+    }
+
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        $resolved = az account list --query "[?name=='$SubscriptionName'] | [0].id" -o tsv 2>$null
+    }
+
+    if ([string]::IsNullOrWhiteSpace($resolved)) {
+        throw "Could not resolve subscription named '$SubscriptionName'. Connect with Connect-AzAccount or 'az login', or pass -SubscriptionId explicitly."
+    }
+
+    $SubscriptionId = $resolved
+    Write-Host "Resolved '$SubscriptionName' -> $SubscriptionId"
+}
+
 Write-Host "Looking up UAMI principalId..."
-$miPrincipalId = az identity show -g $ResourceGroup -n $UamiName --subscription $Subscription --query principalId -o tsv
+$miPrincipalId = az identity show -g $ResourceGroup -n $UamiName --subscription $SubscriptionId --query principalId -o tsv
 if ([string]::IsNullOrWhiteSpace($miPrincipalId)) {
     throw "UAMI '$UamiName' not found in resource group '$ResourceGroup'."
 }

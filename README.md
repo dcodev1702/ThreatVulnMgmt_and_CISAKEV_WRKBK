@@ -62,10 +62,11 @@ The KEV section joins the **latest snapshot per `(DeviceId, CveId)`** in `TvmReg
 
 ## Deployment
 
-> Replace the parameter defaults in [`deploy-tvm-graph-ingest.bicep`](deploy-tvm-graph-ingest.bicep) and [`deploy-tvm-workbook.bicep`](deploy-tvm-workbook.bicep) with your subscription, RG, and workspace.
+> The Bicep templates take subscription, RG, and workspace via parameters with sensible defaults. Subscription discovery in PowerShell is by **name**, not GUID — change `'Security'` below to your subscription's display name.
 
 ```powershell
-$sub = '<your-subscription-id>'
+# Resolve subscription by name via the Az PowerShell cmdlet (no hard-coded GUIDs)
+$sub = (Get-AzSubscription -SubscriptionName 'Security').Id
 $rg  = 'Sentinel'
 
 # 1. Deploy UAMI, custom table, DCR, Logic App, and role assignments
@@ -73,9 +74,10 @@ az deployment group create -g $rg --subscription $sub `
     --template-file .\deploy-tvm-graph-ingest.bicep
 
 # 2. Grant Microsoft Graph ThreatHunting.Read.All to the UAMI (admin consent equivalent)
+#    Resolves -SubscriptionName 'Security' internally; pass -SubscriptionName to override.
 .\grant-graph-permission.ps1
 
-# 3. Publish the workbook
+# 3. Publish the workbook (computes sourceId from subscription/RG/workspace name)
 az deployment group create -g $rg --subscription $sub `
     --template-file .\deploy-tvm-workbook.bicep
 

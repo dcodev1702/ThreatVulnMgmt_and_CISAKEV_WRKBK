@@ -13,12 +13,13 @@
 // No shared keys, no SAS, no Function keys, no app secrets.
 //
 // Deploy:
+//   $sub = (Get-AzSubscription -SubscriptionName 'Security').Id
 //   az deployment group create -g Sentinel `
-//     --subscription 192ad012-896e-4f14-8525-c37a2a9640f9 `
+//     --subscription $sub `
 //     --template-file .\deploy-tvm-graph-ingest.bicep
 //
 // After deploy, run:
-//   .\grant-graph-permission.ps1   (idempotent)
+//   .\grant-graph-permission.ps1   (idempotent; resolves -SubscriptionName 'Security' by default)
 
 @description('Log Analytics workspace that owns the destination custom table.')
 param workspaceName string = 'DIBSecCom'
