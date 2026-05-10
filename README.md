@@ -6,6 +6,12 @@ The data plane is a single **Logic App + Direct-Ingestion DCR** that pulls TVM v
 
 > **Authentication stance:** UAMI + RBAC only. **No** storage shared keys, **no** SAS, **no** Function keys, **no** client secrets, **no** App Registration credentials.
 
+### Why CISA KEV?
+
+The [**CISA Known Exploited Vulnerabilities Catalog**](https://www.cisa.gov/known-exploited-vulnerabilities-catalog) is the authoritative U.S. government list of CVEs with **reliable evidence of active exploitation in the wild**. Unlike raw CVSS, KEV is curated from real attacker behavior and carries a **Federal mandate** under [BOD 22-01](https://www.cisa.gov/news-events/directives/bod-22-01-reducing-significant-risk-known-exploited-vulnerabilities) requiring federal civilian agencies to remediate listed CVEs by a specific `DueDate`.
+
+This workbook ingests the catalog into `CisaKev_CL` and **inner-joins it to per-host TVM findings**, so the dashboard answers the highest-signal question first: *which of my devices are exposed to a CVE that adversaries are actively using right now?* Each KEV match in the workbook carries the catalog's `VulnerabilityName`, `KnownRansomwareCampaignUse` flag, and `DueDate` directly from CISA — turning the KEV section into a prioritized, deadline-driven worklist rather than a generic CVSS dump.
+
 ---
 
 ## Architecture
