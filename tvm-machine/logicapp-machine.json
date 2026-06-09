@@ -18,6 +18,14 @@
       "type": "String",
       "defaultValue": "Custom-MdeTvmWin11IntuneSingleHost_CL"
     },
+    "WorkspaceResourceId": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "TvmTable": {
+      "type": "String",
+      "defaultValue": "MdeTvmWin11IntuneSingleHost_CL"
+    },
     "MdeApiBaseUrl": {
       "type": "String",
       "defaultValue": "https://api.security.microsoft.com"
@@ -33,6 +41,14 @@
     "PageSize": {
       "type": "Int",
       "defaultValue": 50000
+    },
+    "LookbackHours": {
+      "type": "Int",
+      "defaultValue": 24
+    },
+    "EnableDailyTablePurge": {
+      "type": "Bool",
+      "defaultValue": true
     }
   },
   "triggers": {
@@ -67,6 +83,23 @@
       },
       "runAfter": {}
     },
+    "Initialize_Lookback_Cutoff": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "lookbackCutoff",
+            "type": "string",
+            "value": "@{addHours(variables('now'), mul(parameters('LookbackHours'), -1))}"
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_Now": [
+          "Succeeded"
+        ]
+      }
+    },
     "Get_MDVM_Page": {
       "type": "Http",
       "inputs": {
@@ -79,7 +112,7 @@
         }
       },
       "runAfter": {
-        "Initialize_Now": [
+        "Initialize_Lookback_Cutoff": [
           "Succeeded"
         ]
       }
@@ -88,7 +121,7 @@
       "type": "Query",
       "inputs": {
         "from": "@coalesce(body('Get_MDVM_Page')?['value'], json('[]'))",
-        "where": "@equals(toLower(coalesce(item()?['deviceName'], '')), toLower(parameters('MdeMachineName')))"
+        "where": "@and(equals(toLower(coalesce(item()?['deviceName'], '')), toLower(parameters('MdeMachineName'))), greaterOrEquals(ticks(if(empty(item()?['lastSeenTimestamp']), '1900-01-01T00:00:00Z', item()?['lastSeenTimestamp'])), ticks(variables('lookbackCutoff'))))"
       },
       "runAfter": {
         "Get_MDVM_Page": [
@@ -101,7 +134,7 @@
       "inputs": {
         "from": "@body('Filter_Target_Machine')",
         "select": {
-          "TimeGenerated": "@variables('now')",
+          "TimeGenerated": "@{if(empty(item()?['lastSeenTimestamp']), variables('now'), item()?['lastSeenTimestamp'])}",
           "id": "@{coalesce(item()?['id'], '')}",
           "deviceId": "@{coalesce(item()?['deviceId'], '')}",
           "rbacGroupId": "@int(coalesce(item()?['rbacGroupId'], 0))",
@@ -190,6 +223,55 @@
       },
       "runAfter": {
         "Initialize_RowCount": [
+          "Succeeded"
+        ]
+      }
+    },
+    "If_Daily_Table_Purge_Enabled": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@parameters('EnableDailyTablePurge')",
+              true
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Purge_Table_Rows_Older_Than_Lookback": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{concat('https://management.azure.com', parameters('WorkspaceResourceId'), '/purge?api-version=2020-08-01')}",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "table": "@parameters('TvmTable')",
+              "filters": [
+                {
+                  "column": "TimeGenerated",
+                  "operator": "<",
+                  "value": "@variables('lookbackCutoff')"
+                }
+              ]
+            },
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "identity": "@parameters('UamiResourceId')",
+              "audience": "https://management.azure.com/"
+            }
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "If_Has_Rows": [
           "Succeeded"
         ]
       }

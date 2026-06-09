@@ -6,9 +6,32 @@ param workspaceName string = 'DIBSecCom'
 @description('Destination custom table for the single-host WIN11-INTUNE TVM example.')
 param tvmTable string = 'MdeTvmWin11IntuneSingleHost_CL'
 
+@description('Analytics table retention in days. The Logic App purge keeps only the latest 24 hours after each run.')
+@minValue(4)
+param tableRetentionInDays int = 4
+
+@description('Existing user-assigned managed identity name that purges rows older than the active lookback.')
+param uamiName string = 'mi-tvm-graph-ingest'
+
+@description('Subscription id of the existing user-assigned managed identity.')
+param uamiSubscriptionId string = subscription().subscriptionId
+
+@description('Resource group of the existing user-assigned managed identity.')
+param uamiResourceGroup string = resourceGroup().name
+
+@description('Whether to grant Data Purger to the managed identity for daily cleanup.')
+param enableDailyTablePurge bool = true
+
 resource workspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' existing = {
   name: workspaceName
 }
+
+resource uami 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
+  scope: resourceGroup(uamiSubscriptionId, uamiResourceGroup)
+  name: uamiName
+}
+
+var dataPurgerRoleId = '150f5e0c-0603-4f03-8c7f-cf70034c4e90'
 
 resource tvmCustomTable 'Microsoft.OperationalInsights/workspaces/tables@2025-02-01' = {
   parent: workspace
@@ -47,10 +70,22 @@ resource tvmCustomTable 'Microsoft.OperationalInsights/workspaces/tables@2025-02
         { name: 'cveMitigationStatus', type: 'string' }
       ]
     }
-    retentionInDays: 365
+    retentionInDays: tableRetentionInDays
     plan: 'Analytics'
+  }
+}
+
+resource workspaceDataPurgerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableDailyTablePurge) {
+  scope: workspace
+  name: guid(workspace.id, uami.id, dataPurgerRoleId)
+  properties: {
+    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', dataPurgerRoleId)
+    principalId: uami.properties.principalId
+    principalType: 'ServicePrincipal'
   }
 }
 
 output tableName string = tvmTable
 output workspaceResourceId string = workspace.id
+output tableRetentionInDays int = tableRetentionInDays
+output enableDailyTablePurge bool = enableDailyTablePurge

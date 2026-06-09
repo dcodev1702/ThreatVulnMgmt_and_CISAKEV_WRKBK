@@ -36,6 +36,12 @@ param mdeApiAudience string = 'https://api.securitycenter.microsoft.com'
 @description('Rows requested from the Defender XDR API per page.')
 param pageSize int = 50000
 
+@description('Only TVM rows with lastSeenTimestamp inside this many hours are ingested and retained.')
+param lookbackHours int = 24
+
+@description('Whether the Logic App purges table rows older than the lookback after each run.')
+param enableDailyTablePurge bool = true
+
 var streamName = 'Custom-${tvmTable}'
 
 resource uami 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' existing = {
@@ -95,7 +101,7 @@ resource dcr 'Microsoft.Insights/dataCollectionRules@2023-03-11' = {
       {
         streams: [ streamName ]
         destinations: [ 'sentinelWorkspace' ]
-        transformKql: 'source'
+        transformKql: 'source | where TimeGenerated >= ago(${lookbackHours}h)'
         outputStream: streamName
       }
     ]
@@ -136,8 +142,14 @@ resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
       DcrImmutableId: {
         value: dcr.properties.immutableId
       }
+      WorkspaceResourceId: {
+        value: workspaceResourceId
+      }
       StreamName: {
         value: streamName
+      }
+      TvmTable: {
+        value: tvmTable
       }
       MdeApiBaseUrl: {
         value: mdeApiBaseUrl
@@ -150,6 +162,12 @@ resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
       }
       PageSize: {
         value: pageSize
+      }
+      LookbackHours: {
+        value: lookbackHours
+      }
+      EnableDailyTablePurge: {
+        value: enableDailyTablePurge
       }
     }
   }
@@ -168,4 +186,6 @@ output dcrImmutableId string = dcr.properties.immutableId
 output dcrLogsIngestionEndpoint string = dcr.properties.endpoints.logsIngestion
 output logicAppResourceId string = logicApp.id
 output machineName string = machineName
+output lookbackHours int = lookbackHours
+output enableDailyTablePurge bool = enableDailyTablePurge
 output mdeApiBaseUrl string = mdeApiBaseUrl

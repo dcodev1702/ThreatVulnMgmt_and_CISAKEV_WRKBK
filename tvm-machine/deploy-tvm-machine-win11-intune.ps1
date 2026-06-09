@@ -18,6 +18,9 @@ param(
     [string]$LogicAppName = 'la-tvm-win11-intune',
     [string]$MdeApiBaseUrl = 'https://api.security.microsoft.com',
     [string]$MdeApiAudience = 'https://api.securitycenter.microsoft.com',
+    [int]$LookbackHours = 24,
+    [bool]$EnableDailyTablePurge = $true,
+    [int]$TableRetentionInDays = 4,
     [string]$TemplateFile = (Join-Path $PSScriptRoot 'deploy-tvm-machine-win11-intune.bicep'),
     [string]$TableTemplateFile = (Join-Path $PSScriptRoot 'deploy-tvm-machine-win11-intune-table.bicep')
 )
@@ -68,10 +71,19 @@ if (-not (Test-Path -LiteralPath $TableTemplateFile)) {
     throw "Table template file not found: $TableTemplateFile"
 }
 
+if ($LookbackHours -lt 1) {
+    throw "LookbackHours must be at least 1."
+}
+
+if ($TableRetentionInDays -lt 4) {
+    throw "TableRetentionInDays must be at least 4 for an Analytics custom table. The workflow purge handles the exact 24-hour window."
+}
+
 $SubscriptionId = Resolve-SubscriptionId -Name $SubscriptionName -Id $SubscriptionId
 $WorkspaceSubscriptionId = Resolve-SubscriptionId -Name $WorkspaceSubscriptionName -Id $WorkspaceSubscriptionId
 $UamiSubscriptionId = Resolve-SubscriptionId -Name $UamiSubscriptionName -Id $UamiSubscriptionId
 $workspaceResourceId = "/subscriptions/$WorkspaceSubscriptionId/resourceGroups/$WorkspaceResourceGroup/providers/Microsoft.OperationalInsights/workspaces/$WorkspaceName"
+$enableDailyTablePurgeValue = $EnableDailyTablePurge.ToString().ToLowerInvariant()
 
 Write-Host "Ensuring resource group '$ResourceGroup' exists in subscription '$SubscriptionName'..."
 az group create --name $ResourceGroup --location $Location --subscription $SubscriptionId --only-show-errors | Out-Null
@@ -86,7 +98,12 @@ $tableDeployArgs = @(
     '--template-file', $TableTemplateFile,
     '--parameters',
     "workspaceName=$WorkspaceName",
-    "tvmTable=$TvmTable"
+    "tvmTable=$TvmTable",
+    "tableRetentionInDays=$TableRetentionInDays",
+    "uamiName=$UamiName",
+    "uamiSubscriptionId=$UamiSubscriptionId",
+    "uamiResourceGroup=$UamiResourceGroup",
+    "enableDailyTablePurge=$enableDailyTablePurgeValue"
 )
 
 Write-Host "Creating/updating table '$TvmTable' in workspace '$WorkspaceName' under subscription '$WorkspaceSubscriptionName'..."
@@ -113,7 +130,9 @@ $deployArgs = @(
     "dcrName=$DcrName",
     "logicAppName=$LogicAppName",
     "mdeApiBaseUrl=$MdeApiBaseUrl",
-    "mdeApiAudience=$MdeApiAudience"
+    "mdeApiAudience=$MdeApiAudience",
+    "lookbackHours=$LookbackHours",
+    "enableDailyTablePurge=$enableDailyTablePurgeValue"
 )
 
 Write-Host "Deploying single-host TVM Logic App '$LogicAppName' for '$MachineName' into subscription '$SubscriptionName'..."
