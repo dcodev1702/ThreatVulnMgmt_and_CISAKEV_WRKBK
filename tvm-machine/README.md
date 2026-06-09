@@ -18,7 +18,7 @@ This is useful for:
 | Component | Name / File | Purpose |
 | --- | --- | --- |
 | User-assigned managed identity | `mi-tvm-graph-ingest` | Shared identity used by the Logic App to call Defender XDR and post to the DCR. |
-| Logic App Consumption workflow | `la-tvm-win11-intune` / `logicapp-machine.json` | Runs daily, calls the Defender TVM API, filters to `WIN11-INTUNE`, keeps only rows last seen in the previous 24 hours, posts them to Logs Ingestion, and deletes older table rows. |
+| Logic App Consumption workflow | `la-tvm-win11-intune` / `logicapp-machine.json` | Runs daily, calls the Defender TVM API, filters to `WIN11-INTUNE`, suppresses already-ingested finding keys, posts only new rows to Logs Ingestion, and deletes older table rows. |
 | Direct Data Collection Rule | `dcr-tvm-win11-intune-sh` | Receives JSON over the built-in Logs Ingestion endpoint and routes it to the custom table. `kind` is `Direct`, so no Data Collection Endpoint is required. |
 | Custom Log Analytics table | `MdeTvmWin11IntuneSingleHost_CL` / `deploy-tvm-machine-win11-intune-table.bicep` | Dedicated Analytics table for this single-host example, with retention set to the Analytics-table floor while workflow cleanup maintains the 24-hour active window. |
 | Infra deployment template | `deploy-tvm-machine-win11-intune.bicep` | Deploys the DCR, role assignment, and Logic App in the hosting subscription while pointing the DCR destination to the workspace. |
@@ -29,8 +29,8 @@ This is useful for:
 ## Architecture Flow
 
 1. The Logic App `DailyAt04UTC` recurrence starts the workflow.
-2. The workflow initializes `now` and a 24-hour lookback cutoff (`now - LookbackHours`).
-3. `Get_MDVM_Page` calls the commercial Defender XDR API:
+1. The workflow initializes `now` and a 24-hour lookback cutoff (`now - LookbackHours`).
+1. `Get_MDVM_Page` calls the commercial Defender XDR API:
 
    ```text
    GET https://api.security.microsoft.com/api/machines/SoftwareVulnerabilitiesByMachine?pageSize=50000&$filter=deviceName eq 'WIN11-INTUNE'
@@ -38,7 +38,7 @@ This is useful for:
 
    The API call is scoped by device name. The workflow does not rely on a server-side timestamp filter; it enforces the time window after the response is returned.
 
-4. The Logic App authenticates to Defender XDR using the UAMI and the Defender token audience:
+1. The Logic App authenticates to Defender XDR using the UAMI and the Defender token audience:
 
    ```text
    https://api.securitycenter.microsoft.com
@@ -46,21 +46,24 @@ This is useful for:
 
    The endpoint and token audience are intentionally different. Some Defender for Endpoint APIs still require tokens issued for the legacy `api.securitycenter.microsoft.com` resource even when the HTTP endpoint is `api.security.microsoft.com`.
 
-5. `Filter_Target_Machine` applies a second, case-insensitive Logic App filter on `deviceName` and only keeps rows where `lastSeenTimestamp >= now - 24h`.
-6. `ShapeRows` projects the Defender response into the DCR/table schema and uses the source `lastSeenTimestamp` as `TimeGenerated`.
-7. `If_Has_Rows` posts the shaped array to the Direct DCR stream:
+1. `Filter_Target_Machine` applies a second, case-insensitive Logic App filter on `deviceName` and only keeps rows where `lastSeenTimestamp >= now - 24h`.
+1. `ShapeRows` projects the Defender response into the DCR/table schema, builds a stable `findingKey`, stamps the run into `TimeGenerated` and `ingestionRunTime`, and preserves the source TVM recency in `lastSeenTimestamp`.
+1. `Deduplicate_Shaped_Rows` removes exact duplicates inside the current API response.
+1. `For_Each_Filtered_Row` builds the final post body one `findingKey` at a time, preventing multiple rows for the same logical finding from being posted in the same run.
+1. `If_Table_Cleanup_Enabled` submits a Log Analytics Delete Data API request for rows already in the table where `TimeGenerated < now`; the current run's rows are stamped with `now`, so the cleanup cannot match the new snapshot.
+1. `If_Has_Rows` posts the current deconflicted snapshot to the Direct DCR stream:
 
    ```text
    Custom-MdeTvmWin11IntuneSingleHost_CL
    ```
 
-8. The Direct DCR applies the same lookback guardrail with `source | where TimeGenerated >= ago(24h)`, then routes the stream to the Log Analytics workspace destination and outputs to:
+1. The Direct DCR applies the same lookback guardrail with `source | where TimeGenerated >= ago(24h)`, then routes the stream to the Log Analytics workspace destination and outputs to:
 
    ```text
    MdeTvmWin11IntuneSingleHost_CL
    ```
 
-9. `If_Daily_Table_Cleanup_Enabled` calls the Log Analytics Delete Data API to remove rows in `MdeTvmWin11IntuneSingleHost_CL` whose `TimeGenerated` is older than the same cutoff.
+The workflow trigger has concurrency set to one run at a time, so overlapping manual or scheduled runs cannot interleave delete/post operations.
 
 ## Identity And RBAC
 
@@ -72,7 +75,7 @@ The shared UAMI needs these permissions:
 | --- | --- | --- |
 | `Vulnerability.Read.All` application role on `WindowsDefenderATP` | Microsoft Defender XDR service principal | Allows the UAMI to call the Defender TVM API with application context. The helper script grants this through Microsoft Graph app role assignment APIs. |
 | `Monitoring Metrics Publisher` Azure RBAC role | The DCR resource | Required by the Logs Ingestion API for posting to a DCR stream. The Bicep template creates this role assignment. |
-| Custom delete-data Azure RBAC role | The Log Analytics workspace | Provides `Microsoft.OperationalInsights/workspaces/tables/deleteData/action`, which is required by the Delete Data API action that removes rows older than the 24-hour lookback. The Bicep template creates and assigns this narrow role when daily cleanup is enabled. |
+| Custom delete-data Azure RBAC role | The Log Analytics workspace | Provides `Microsoft.OperationalInsights/workspaces/tables/deleteData/action`, which is required by the Delete Data API action that removes rows from previous runs before the current snapshot is posted. |
 
 The operator deploying the solution needs enough Azure RBAC to create or update:
 
@@ -216,6 +219,7 @@ The scripts default to friendly subscription and resource names, but all sensiti
 - The UAMI can be shared with the broader TVM workbook pipeline as long as its RBAC/app-role assignments cover both Defender XDR and the relevant DCR scopes.
 - The table schema and stream declaration must match exactly. Logs Ingestion validates column names and types against the DCR stream declaration and output table.
 - The Logic App includes both an API-side `$filter` and a client-side `Filter_Target_Machine` action. The client-side filter is the correctness guard for both device name and the 24-hour `lastSeenTimestamp` window.
+- The Logic App queries existing `findingKey` values and only posts rows that are not already present in the current 24-hour table window, so manual re-runs do not append redundant copies of the same device/software/CVE finding.
 - Table retention cannot be used as an exact 24-hour control for this Analytics table, so retention is set to the lowest supported value and the workflow uses the Log Analytics Delete Data API for the active 24-hour window. Delete operations are asynchronous, so stale rows can remain visible briefly after a run starts cleanup.
 - Use a dedicated table for example or lab host ingestion. This prevents single-host validation data from changing workbook production metrics.
 - Avoid documenting subscription ids, tenant ids, workspace customer ids, DCR immutable ids, or full device ids in architecture notes or examples.

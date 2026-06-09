@@ -63,6 +63,8 @@ resource tvmCustomTable 'Microsoft.OperationalInsights/workspaces/tables@2025-02
       name: tvmTable
       columns: [
         { name: 'TimeGenerated', type: 'datetime' }
+        { name: 'ingestionRunTime', type: 'datetime' }
+        { name: 'findingKey', type: 'string' }
         { name: 'id', type: 'string' }
         { name: 'deviceId', type: 'string' }
         { name: 'rbacGroupId', type: 'int' }

@@ -84,7 +84,6 @@ $WorkspaceSubscriptionId = Resolve-SubscriptionId -Name $WorkspaceSubscriptionNa
 $UamiSubscriptionId = Resolve-SubscriptionId -Name $UamiSubscriptionName -Id $UamiSubscriptionId
 $workspaceResourceId = "/subscriptions/$WorkspaceSubscriptionId/resourceGroups/$WorkspaceResourceGroup/providers/Microsoft.OperationalInsights/workspaces/$WorkspaceName"
 $enableDailyTableCleanupValue = $EnableDailyTableCleanup.ToString().ToLowerInvariant()
-
 Write-Host "Ensuring resource group '$ResourceGroup' exists in subscription '$SubscriptionName'..."
 az group create --name $ResourceGroup --location $Location --subscription $SubscriptionId --only-show-errors | Out-Null
 if ($LASTEXITCODE -ne 0) {

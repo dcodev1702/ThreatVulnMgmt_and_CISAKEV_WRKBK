@@ -66,6 +66,11 @@
           ]
         },
         "timeZone": "UTC"
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "runs": 1
+        }
       }
     }
   },
@@ -134,7 +139,9 @@
       "inputs": {
         "from": "@body('Filter_Target_Machine')",
         "select": {
-          "TimeGenerated": "@{if(empty(item()?['lastSeenTimestamp']), variables('now'), item()?['lastSeenTimestamp'])}",
+          "TimeGenerated": "@variables('now')",
+          "ingestionRunTime": "@variables('now')",
+          "findingKey": "@{toLower(concat(if(empty(item()?['deviceId']), coalesce(item()?['deviceName'], ''), item()?['deviceId']), '|', coalesce(item()?['softwareVendor'], ''), '|', coalesce(item()?['softwareName'], ''), '|', coalesce(item()?['softwareVersion'], ''), '|', coalesce(item()?['cveId'], '')))}",
           "id": "@{coalesce(item()?['id'], '')}",
           "deviceId": "@{coalesce(item()?['deviceId'], '')}",
           "rbacGroupId": "@int(coalesce(item()?['rbacGroupId'], 0))",
@@ -170,6 +177,106 @@
         ]
       }
     },
+    "Deduplicate_Shaped_Rows": {
+      "type": "Compose",
+      "inputs": "@union(body('ShapeRows'), body('ShapeRows'))",
+      "runAfter": {
+        "ShapeRows": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_Post_Finding_Keys": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "postFindingKeys",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Deduplicate_Shaped_Rows": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_Post_Rows": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "postRows",
+            "type": "array",
+            "value": []
+          }
+        ]
+      },
+      "runAfter": {
+        "Initialize_Post_Finding_Keys": [
+          "Succeeded"
+        ]
+      }
+    },
+    "For_Each_Filtered_Row": {
+      "type": "Foreach",
+      "foreach": "@outputs('Deduplicate_Shaped_Rows')",
+      "actions": {
+        "If_Finding_Key_Not_Queued": {
+          "type": "If",
+          "expression": {
+            "and": [
+              {
+                "not": {
+                  "contains": [
+                    "@variables('postFindingKeys')",
+                    "@items('For_Each_Filtered_Row')?['findingKey']"
+                  ]
+                }
+              }
+            ]
+          },
+          "actions": {
+            "Append_Post_Finding_Key": {
+              "type": "AppendToArrayVariable",
+              "inputs": {
+                "name": "postFindingKeys",
+                "value": "@items('For_Each_Filtered_Row')?['findingKey']"
+              },
+              "runAfter": {}
+            },
+            "Append_Post_Row": {
+              "type": "AppendToArrayVariable",
+              "inputs": {
+                "name": "postRows",
+                "value": "@items('For_Each_Filtered_Row')"
+              },
+              "runAfter": {
+                "Append_Post_Finding_Key": [
+                  "Succeeded"
+                ]
+              }
+            }
+          },
+          "else": {
+            "actions": {}
+          },
+          "runAfter": {}
+        }
+      },
+      "runAfter": {
+        "Initialize_Post_Rows": [
+          "Succeeded"
+        ]
+      },
+      "runtimeConfiguration": {
+        "concurrency": {
+          "repetitions": 1
+        }
+      }
+    },
     "Initialize_RowCount": {
       "type": "InitializeVariable",
       "inputs": {
@@ -177,12 +284,61 @@
           {
             "name": "rowCount",
             "type": "integer",
-            "value": "@length(body('ShapeRows'))"
+            "value": "@length(variables('postRows'))"
           }
         ]
       },
       "runAfter": {
-        "ShapeRows": [
+        "For_Each_Filtered_Row": [
+          "Succeeded"
+        ]
+      }
+    },
+    "If_Table_Cleanup_Enabled": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "equals": [
+              "@parameters('EnableDailyTableCleanup')",
+              true
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "Delete_Previous_Table_Rows": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{concat('https://management.azure.com', parameters('WorkspaceResourceId'), '/tables/', parameters('TvmTable'), '/deleteData?api-version=2023-09-01')}",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": {
+              "filters": [
+                {
+                  "column": "TimeGenerated",
+                  "operator": "<",
+                  "value": "@variables('now')"
+                }
+              ]
+            },
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "identity": "@parameters('UamiResourceId')",
+              "audience": "https://management.azure.com/"
+            }
+          },
+          "operationOptions": "DisableAsyncPattern",
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Initialize_RowCount": [
           "Succeeded"
         ]
       }
@@ -208,7 +364,7 @@
             "headers": {
               "Content-Type": "application/json"
             },
-            "body": "@body('ShapeRows')",
+            "body": "@variables('postRows')",
             "authentication": {
               "type": "ManagedServiceIdentity",
               "identity": "@parameters('UamiResourceId')",
@@ -222,56 +378,7 @@
         "actions": {}
       },
       "runAfter": {
-        "Initialize_RowCount": [
-          "Succeeded"
-        ]
-      }
-    },
-    "If_Daily_Table_Cleanup_Enabled": {
-      "type": "If",
-      "expression": {
-        "and": [
-          {
-            "equals": [
-              "@parameters('EnableDailyTableCleanup')",
-              true
-            ]
-          }
-        ]
-      },
-      "actions": {
-        "Delete_Table_Rows_Older_Than_Lookback": {
-          "type": "Http",
-          "inputs": {
-            "method": "POST",
-            "uri": "@{concat('https://management.azure.com', parameters('WorkspaceResourceId'), '/tables/', parameters('TvmTable'), '/deleteData?api-version=2023-09-01')}",
-            "headers": {
-              "Content-Type": "application/json"
-            },
-            "body": {
-              "filters": [
-                {
-                  "column": "TimeGenerated",
-                  "operator": "<",
-                  "value": "@variables('lookbackCutoff')"
-                }
-              ]
-            },
-            "authentication": {
-              "type": "ManagedServiceIdentity",
-              "identity": "@parameters('UamiResourceId')",
-              "audience": "https://management.azure.com/"
-            }
-          },
-          "operationOptions": "DisableAsyncPattern",
-          "runAfter": {}
-        }
-      },
-      "else": {
-        "actions": {}
-      },
-      "runAfter": {
-        "If_Has_Rows": [
+        "If_Table_Cleanup_Enabled": [
           "Succeeded"
         ]
       }
