@@ -1,6 +1,6 @@
 # 💻 Single-Host TVM Ingestion
 
-This folder contains a local-only example deployment for publishing Microsoft Defender Vulnerability Management findings for one host, `WIN11-INTUNE`, into a dedicated Log Analytics custom table. The folder is intentionally ignored by git because it is machine- and tenant-specific deployment scaffolding.
+This folder contains a local-only example deployment for publishing Microsoft Defender Vulnerability Management findings for one host, `WIN11-INTUNE`, into a dedicated Log Analytics custom table.
 
 ## Use Case
 
