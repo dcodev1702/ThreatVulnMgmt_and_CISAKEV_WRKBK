@@ -39,8 +39,8 @@ param pageSize int = 50000
 @description('Only TVM rows with lastSeenTimestamp inside this many hours are ingested and retained.')
 param lookbackHours int = 24
 
-@description('Whether the Logic App purges table rows older than the lookback after each run.')
-param enableDailyTablePurge bool = true
+@description('Whether the Logic App deletes table rows older than the lookback after each run.')
+param enableDailyTableCleanup bool = true
 
 var streamName = 'Custom-${tvmTable}'
 
@@ -166,8 +166,8 @@ resource logicApp 'Microsoft.Logic/workflows@2019-05-01' = {
       LookbackHours: {
         value: lookbackHours
       }
-      EnableDailyTablePurge: {
-        value: enableDailyTablePurge
+      EnableDailyTableCleanup: {
+        value: enableDailyTableCleanup
       }
     }
   }
@@ -187,5 +187,5 @@ output dcrLogsIngestionEndpoint string = dcr.properties.endpoints.logsIngestion
 output logicAppResourceId string = logicApp.id
 output machineName string = machineName
 output lookbackHours int = lookbackHours
-output enableDailyTablePurge bool = enableDailyTablePurge
+output enableDailyTableCleanup bool = enableDailyTableCleanup
 output mdeApiBaseUrl string = mdeApiBaseUrl

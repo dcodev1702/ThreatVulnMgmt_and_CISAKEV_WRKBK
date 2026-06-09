@@ -46,7 +46,7 @@
       "type": "Int",
       "defaultValue": 24
     },
-    "EnableDailyTablePurge": {
+    "EnableDailyTableCleanup": {
       "type": "Bool",
       "defaultValue": true
     }
@@ -227,29 +227,28 @@
         ]
       }
     },
-    "If_Daily_Table_Purge_Enabled": {
+    "If_Daily_Table_Cleanup_Enabled": {
       "type": "If",
       "expression": {
         "and": [
           {
             "equals": [
-              "@parameters('EnableDailyTablePurge')",
+              "@parameters('EnableDailyTableCleanup')",
               true
             ]
           }
         ]
       },
       "actions": {
-        "Purge_Table_Rows_Older_Than_Lookback": {
+        "Delete_Table_Rows_Older_Than_Lookback": {
           "type": "Http",
           "inputs": {
             "method": "POST",
-            "uri": "@{concat('https://management.azure.com', parameters('WorkspaceResourceId'), '/purge?api-version=2020-08-01')}",
+            "uri": "@{concat('https://management.azure.com', parameters('WorkspaceResourceId'), '/tables/', parameters('TvmTable'), '/deleteData?api-version=2023-09-01')}",
             "headers": {
               "Content-Type": "application/json"
             },
             "body": {
-              "table": "@parameters('TvmTable')",
               "filters": [
                 {
                   "column": "TimeGenerated",
@@ -264,6 +263,7 @@
               "audience": "https://management.azure.com/"
             }
           },
+          "operationOptions": "DisableAsyncPattern",
           "runAfter": {}
         }
       },

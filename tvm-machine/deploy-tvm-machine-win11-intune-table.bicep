@@ -6,11 +6,11 @@ param workspaceName string = 'DIBSecCom'
 @description('Destination custom table for the single-host WIN11-INTUNE TVM example.')
 param tvmTable string = 'MdeTvmWin11IntuneSingleHost_CL'
 
-@description('Analytics table retention in days. The Logic App purge keeps only the latest 24 hours after each run.')
+@description('Analytics table retention in days. The Logic App cleanup keeps only the latest 24 hours after each run.')
 @minValue(4)
 param tableRetentionInDays int = 4
 
-@description('Existing user-assigned managed identity name that purges rows older than the active lookback.')
+@description('Existing user-assigned managed identity name that deletes rows older than the active lookback.')
 param uamiName string = 'mi-tvm-graph-ingest'
 
 @description('Subscription id of the existing user-assigned managed identity.')
@@ -19,8 +19,8 @@ param uamiSubscriptionId string = subscription().subscriptionId
 @description('Resource group of the existing user-assigned managed identity.')
 param uamiResourceGroup string = resourceGroup().name
 
-@description('Whether to grant Data Purger to the managed identity for daily cleanup.')
-param enableDailyTablePurge bool = true
+@description('Whether to grant Delete Data API permissions to the managed identity for daily cleanup.')
+param enableDailyTableCleanup bool = true
 
 resource workspace 'Microsoft.OperationalInsights/workspaces@2025-02-01' existing = {
   name: workspaceName
@@ -31,7 +31,29 @@ resource uami 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' exis
   name: uamiName
 }
 
-var dataPurgerRoleId = '150f5e0c-0603-4f03-8c7f-cf70034c4e90'
+resource tableDeleteDataRole 'Microsoft.Authorization/roleDefinitions@2022-04-01' = if (enableDailyTableCleanup) {
+  name: guid(resourceGroup().id, 'mde-tvm-single-host-delete-data', tvmTable)
+  properties: {
+    roleName: 'MDE TVM Single Host Delete Data ${uniqueString(resourceGroup().id, tvmTable)}'
+    description: 'Can delete rows from the single-host TVM custom table by using the Log Analytics Delete Data API.'
+    type: 'CustomRole'
+    assignableScopes: [
+      resourceGroup().id
+    ]
+    permissions: [
+      {
+        actions: [
+          'Microsoft.OperationalInsights/workspaces/read'
+          'Microsoft.OperationalInsights/workspaces/tables/read'
+          'Microsoft.OperationalInsights/workspaces/tables/deleteData/action'
+        ]
+        notActions: []
+        dataActions: []
+        notDataActions: []
+      }
+    ]
+  }
+}
 
 resource tvmCustomTable 'Microsoft.OperationalInsights/workspaces/tables@2025-02-01' = {
   parent: workspace
@@ -75,11 +97,11 @@ resource tvmCustomTable 'Microsoft.OperationalInsights/workspaces/tables@2025-02
   }
 }
 
-resource workspaceDataPurgerRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableDailyTablePurge) {
+resource workspaceCleanupRole 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (enableDailyTableCleanup) {
   scope: workspace
-  name: guid(workspace.id, uami.id, dataPurgerRoleId)
+  name: guid(workspace.id, uami.id, tableDeleteDataRole.id)
   properties: {
-    roleDefinitionId: subscriptionResourceId('Microsoft.Authorization/roleDefinitions', dataPurgerRoleId)
+    roleDefinitionId: tableDeleteDataRole.id
     principalId: uami.properties.principalId
     principalType: 'ServicePrincipal'
   }
@@ -88,4 +110,4 @@ resource workspaceDataPurgerRole 'Microsoft.Authorization/roleAssignments@2022-0
 output tableName string = tvmTable
 output workspaceResourceId string = workspace.id
 output tableRetentionInDays int = tableRetentionInDays
-output enableDailyTablePurge bool = enableDailyTablePurge
+output enableDailyTableCleanup bool = enableDailyTableCleanup
