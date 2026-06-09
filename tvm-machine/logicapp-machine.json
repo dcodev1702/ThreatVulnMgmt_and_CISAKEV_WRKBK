@@ -1,0 +1,199 @@
+{
+  "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "UamiResourceId": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "DcrLogsIngestionEndpoint": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "DcrImmutableId": {
+      "type": "String",
+      "defaultValue": ""
+    },
+    "StreamName": {
+      "type": "String",
+      "defaultValue": "Custom-MdeTvmWin11IntuneSingleHost_CL"
+    },
+    "MdeApiBaseUrl": {
+      "type": "String",
+      "defaultValue": "https://api.security.microsoft.com"
+    },
+    "MdeApiAudience": {
+      "type": "String",
+      "defaultValue": "https://api.securitycenter.microsoft.com"
+    },
+    "MdeMachineName": {
+      "type": "String",
+      "defaultValue": "WIN11-INTUNE"
+    },
+    "PageSize": {
+      "type": "Int",
+      "defaultValue": 50000
+    }
+  },
+  "triggers": {
+    "DailyAt04UTC": {
+      "type": "Recurrence",
+      "recurrence": {
+        "frequency": "Day",
+        "interval": 1,
+        "schedule": {
+          "hours": [
+            4
+          ],
+          "minutes": [
+            0
+          ]
+        },
+        "timeZone": "UTC"
+      }
+    }
+  },
+  "actions": {
+    "Initialize_Now": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "now",
+            "type": "string",
+            "value": "@{utcNow()}"
+          }
+        ]
+      },
+      "runAfter": {}
+    },
+    "Get_MDVM_Page": {
+      "type": "Http",
+      "inputs": {
+        "method": "GET",
+        "uri": "@{concat(parameters('MdeApiBaseUrl'), '/api/machines/SoftwareVulnerabilitiesByMachine?pageSize=', string(parameters('PageSize')), '&%24filter=', encodeUriComponent(concat('deviceName eq ''', parameters('MdeMachineName'), '''')))}",
+        "authentication": {
+          "type": "ManagedServiceIdentity",
+          "identity": "@parameters('UamiResourceId')",
+          "audience": "@parameters('MdeApiAudience')"
+        }
+      },
+      "runAfter": {
+        "Initialize_Now": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Filter_Target_Machine": {
+      "type": "Query",
+      "inputs": {
+        "from": "@coalesce(body('Get_MDVM_Page')?['value'], json('[]'))",
+        "where": "@equals(toLower(coalesce(item()?['deviceName'], '')), toLower(parameters('MdeMachineName')))"
+      },
+      "runAfter": {
+        "Get_MDVM_Page": [
+          "Succeeded"
+        ]
+      }
+    },
+    "ShapeRows": {
+      "type": "Select",
+      "inputs": {
+        "from": "@body('Filter_Target_Machine')",
+        "select": {
+          "TimeGenerated": "@variables('now')",
+          "id": "@{coalesce(item()?['id'], '')}",
+          "deviceId": "@{coalesce(item()?['deviceId'], '')}",
+          "rbacGroupId": "@int(coalesce(item()?['rbacGroupId'], 0))",
+          "rbacGroupName": "@{coalesce(item()?['rbacGroupName'], '')}",
+          "deviceName": "@{coalesce(item()?['deviceName'], '')}",
+          "osPlatform": "@{coalesce(item()?['osPlatform'], '')}",
+          "osVersion": "@{coalesce(item()?['osVersion'], '')}",
+          "osArchitecture": "@{coalesce(item()?['osArchitecture'], '')}",
+          "softwareVendor": "@{coalesce(item()?['softwareVendor'], '')}",
+          "softwareName": "@{coalesce(item()?['softwareName'], '')}",
+          "softwareVersion": "@{coalesce(item()?['softwareVersion'], '')}",
+          "cveId": "@{coalesce(item()?['cveId'], '')}",
+          "vulnerabilitySeverityLevel": "@{coalesce(item()?['vulnerabilitySeverityLevel'], '')}",
+          "recommendedSecurityUpdate": "@{coalesce(item()?['recommendedSecurityUpdate'], '')}",
+          "recommendedSecurityUpdateId": "@{coalesce(item()?['recommendedSecurityUpdateId'], '')}",
+          "recommendedSecurityUpdateUrl": "@{coalesce(item()?['recommendedSecurityUpdateUrl'], '')}",
+          "diskPaths": "@{string(coalesce(item()?['diskPaths'], json('[]')))}",
+          "registryPaths": "@{string(coalesce(item()?['registryPaths'], json('[]')))}",
+          "lastSeenTimestamp": "@{coalesce(item()?['lastSeenTimestamp'], '')}",
+          "firstSeenTimestamp": "@{coalesce(item()?['firstSeenTimestamp'], '')}",
+          "endOfSupportStatus": "@{coalesce(item()?['endOfSupportStatus'], '')}",
+          "endOfSupportDate": "@{coalesce(item()?['endOfSupportDate'], '')}",
+          "exploitabilityLevel": "@{coalesce(item()?['exploitabilityLevel'], '')}",
+          "recommendationReference": "@{coalesce(item()?['recommendationReference'], '')}",
+          "cvssScore": "@{string(coalesce(item()?['cvssScore'], 0))}",
+          "securityUpdateAvailable": "@{string(coalesce(item()?['securityUpdateAvailable'], false))}",
+          "cveMitigationStatus": "@{coalesce(item()?['cveMitigationStatus'], '')}"
+        }
+      },
+      "runAfter": {
+        "Filter_Target_Machine": [
+          "Succeeded"
+        ]
+      }
+    },
+    "Initialize_RowCount": {
+      "type": "InitializeVariable",
+      "inputs": {
+        "variables": [
+          {
+            "name": "rowCount",
+            "type": "integer",
+            "value": "@length(body('ShapeRows'))"
+          }
+        ]
+      },
+      "runAfter": {
+        "ShapeRows": [
+          "Succeeded"
+        ]
+      }
+    },
+    "If_Has_Rows": {
+      "type": "If",
+      "expression": {
+        "and": [
+          {
+            "greater": [
+              "@variables('rowCount')",
+              0
+            ]
+          }
+        ]
+      },
+      "actions": {
+        "PostRowsToDcr": {
+          "type": "Http",
+          "inputs": {
+            "method": "POST",
+            "uri": "@{concat(parameters('DcrLogsIngestionEndpoint'), '/dataCollectionRules/', parameters('DcrImmutableId'), '/streams/', parameters('StreamName'), '?api-version=2023-01-01')}",
+            "headers": {
+              "Content-Type": "application/json"
+            },
+            "body": "@body('ShapeRows')",
+            "authentication": {
+              "type": "ManagedServiceIdentity",
+              "identity": "@parameters('UamiResourceId')",
+              "audience": "https://monitor.azure.com"
+            }
+          },
+          "runAfter": {}
+        }
+      },
+      "else": {
+        "actions": {}
+      },
+      "runAfter": {
+        "Initialize_RowCount": [
+          "Succeeded"
+        ]
+      }
+    }
+  },
+  "outputs": {}
+}
